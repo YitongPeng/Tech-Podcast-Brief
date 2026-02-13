@@ -21,6 +21,7 @@ from .render import EpisodeWriteup, render_daily_brief_md, render_episode_md
 from .rss import parse_feed
 from .summarize import extract_summary_from_transcript
 from .translate import get_deepseek_client, translate_transcript_file
+from .workflow import process_episode_with_workflow
 
 
 app = typer.Typer(add_completion=False)
@@ -422,6 +423,129 @@ def clean(
         console.print(f"\n[green]✓ 清理完成[/green] 释放空间: {total_mb:.1f} MB")
     else:
         console.print("\n[yellow]没有文件需要清理[/yellow]")
+
+
+@app.command()
+def run_workflow(
+    max_episodes_per_feed: int = typer.Option(1, help="每个 feed 处理最新几集"),
+) -> None:
+    """
+    🚀 使用 LangGraph 工作流处理播客（新功能）
+    
+    相比 run 命令的优势：
+    - 可视化状态流转
+    - 更好的错误处理
+    - 每个节点独立执行
+    """
+    load_dotenv()
+    
+    paths = get_project_paths()
+    
+    # 确保目录存在
+    paths.audio_dir.mkdir(parents=True, exist_ok=True)
+    paths.transcripts_dir.mkdir(parents=True, exist_ok=True)
+    paths.episode_outputs_dir.mkdir(parents=True, exist_ok=True)
+    paths.daily_brief_dir.mkdir(parents=True, exist_ok=True)
+    
+    db = EpisodeDB(paths.db_path)
+    
+    console.print("\n[bold cyan]🎙️ 播客自动处理（LangGraph 版本）[/bold cyan]\n")
+    
+    all_writeups: list[EpisodeWriteup] = []
+    
+    for feed in DEFAULT_FEEDS:
+        console.print(f"[bold]Feed {feed.title}[/bold] — {feed.rss_url}")
+        
+        try:
+            episodes = parse_feed(feed, max_entries=max_episodes_per_feed)
+        except Exception as e:
+            console.print(f"  [red]✗ 拉取失败，跳过[/red] {type(e).__name__}: {e}")
+            continue
+        
+        if not episodes:
+            console.print("  [yellow]⚠ 没有找到节目[/yellow]")
+            continue
+        
+        for ep in episodes:
+            episode_id = stable_episode_id(feed.slug, ep.guid, ep.audio_url, ep.title)
+            
+            # 检查是否已处理（数据库中已有且状态不是 new）
+            existing = db.get_episode(episode_id)
+            if existing and existing.status not in ("new", "no_audio"):
+                console.print(f"  [dim]⏩ 跳过已处理[/dim] {ep.title}")
+                continue
+            
+            if not ep.audio_url:
+                console.print(f"  [yellow]⚠ 无音频链接，跳过[/yellow] {ep.title}")
+                continue
+            
+            console.print(f"\n  [cyan]▶ 处理[/cyan] {ep.title}")
+            console.print(f"    发布日期: {ep.published}")
+            
+            # 使用 LangGraph 工作流处理
+            try:
+                result = process_episode_with_workflow(
+                    feed_name=feed.slug,
+                    episode_id=episode_id,
+                    episode_title=ep.title,
+                    episode_url=ep.audio_url,
+                    published_date=ep.published or "",
+                )
+                
+                # 显示每个节点的状态
+                console.print(f"    [{'green' if result['audio_downloaded'] else 'red'}]{'✓' if result['audio_downloaded'] else '✗'}[/] 下载音频")
+                console.print(f"    [{'green' if result['transcribed'] else 'red'}]{'✓' if result['transcribed'] else '✗'}[/] ASR 转写")
+                console.print(f"    [{'green' if result['translated'] else 'red'}]{'✓' if result['translated'] else '✗'}[/] 翻译中文")
+                console.print(f"    [{'green' if result['summarized'] else 'red'}]{'✓' if result['summarized'] else '✗'}[/] 生成总结")
+                console.print(f"    [{'green' if result['published_to_feishu'] else 'red'}]{'✓' if result['published_to_feishu'] else '✗'}[/] 发布飞书")
+                
+                if result.get("error"):
+                    console.print(f"    [red]错误: {result['error']}[/red]")
+                else:
+                    # 记录到数据库
+                    db.upsert_episode(
+                        episode_id=episode_id,
+                        feed_slug=feed.slug,
+                        feed_title=feed.title,
+                        title=ep.title,
+                        published=ep.published,
+                        episode_url=ep.episode_url,
+                        audio_url=ep.audio_url,
+                        audio_type=ep.audio_type,
+                        audio_length_bytes=ep.audio_length_bytes,
+                    )
+                    db.set_status(episode_id, "done")
+                    
+                    # 收集 writeup 用于 Daily Brief
+                    writeup = EpisodeWriteup(
+                        episode_id=episode_id,
+                        feed_title=feed.title,
+                        title=ep.title,
+                        published=ep.published,
+                        episode_url=ep.episode_url,
+                        audio_url=ep.audio_url,
+                        tags=result["tags"],
+                        bullets=result["bullets"],
+                    )
+                    all_writeups.append(writeup)
+                    
+                    console.print(f"    [green]✓ 处理完成[/green]")
+            
+            except Exception as e:
+                console.print(f"    [red]✗ 工作流执行失败: {e}[/red]")
+                continue
+    
+    # 生成 Daily Brief
+    if all_writeups:
+        console.print(f"\n[bold cyan]📝 生成 Daily Brief[/bold cyan]")
+        today = date.today().isoformat()
+        daily_md = render_daily_brief_md(today, all_writeups)
+        daily_brief_path = paths.daily_brief_dir / f"{today}.md"
+        daily_brief_path.parent.mkdir(parents=True, exist_ok=True)
+        daily_brief_path.write_text(daily_md, encoding="utf-8")
+        console.print(f"  [green]✓ 本地 Markdown[/green] {daily_brief_path}")
+    
+    console.print("\n[bold green]🎉 所有任务完成！[/bold green]\n")
 
 
 def main() -> None:
