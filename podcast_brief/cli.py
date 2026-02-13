@@ -428,14 +428,16 @@ def clean(
 @app.command()
 def run_workflow(
     max_episodes_per_feed: int = typer.Option(1, help="每个 feed 处理最新几集"),
+    publish_feishu: bool = typer.Option(True, help="发布到飞书多维表格"),
+    feishu_docx: bool = typer.Option(True, help="创建飞书 Daily Brief 文档"),
 ) -> None:
     """
-    🚀 使用 LangGraph 工作流处理播客（新功能）
+    🚀 使用 LangGraph 工作流处理播客
     
     相比 run 命令的优势：
-    - 可视化状态流转
-    - 更好的错误处理
-    - 每个节点独立执行
+    - LangGraph 状态图编排
+    - 每个节点独立执行，状态可追踪
+    - 更好的错误处理和恢复
     """
     load_dotenv()
     
@@ -449,9 +451,28 @@ def run_workflow(
     
     db = EpisodeDB(paths.db_path)
     
+    # 检查飞书配置
+    feishu_config = get_feishu_config() if publish_feishu else None
+    feishu_client: Optional[FeishuClient] = None
+    if publish_feishu:
+        if not feishu_config:
+            console.print("[yellow]提示：未配置飞书应用，将跳过飞书发布[/yellow]")
+            publish_feishu = False
+        else:
+            feishu_client = FeishuClient(feishu_config)
+    
     console.print("\n[bold cyan]🎙️ 播客自动处理（LangGraph 版本）[/bold cyan]\n")
     
+    today = date.today().isoformat()
     all_writeups: list[EpisodeWriteup] = []
+    all_tags: list[str] = []
+    feishu_publish_result = {
+        "success": False,
+        "new_records": 0,
+        "skipped_records": 0,
+        "all_tags": [],
+        "doc_url": None,
+    }
     
     for feed in DEFAULT_FEEDS:
         console.print(f"[bold]Feed {feed.title}[/bold] — {feed.rss_url}")
@@ -469,7 +490,7 @@ def run_workflow(
         for ep in episodes:
             episode_id = stable_episode_id(feed.slug, ep.guid, ep.audio_url, ep.title)
             
-            # 检查是否已处理（数据库中已有且状态不是 new）
+            # 检查是否已处理
             existing = db.get_episode(episode_id)
             if existing and existing.status not in ("new", "no_audio"):
                 console.print(f"  [dim]⏩ 跳过已处理[/dim] {ep.title}")
@@ -528,6 +549,7 @@ def run_workflow(
                         bullets=result["bullets"],
                     )
                     all_writeups.append(writeup)
+                    all_tags.extend(result["tags"])
                     
                     console.print(f"    [green]✓ 处理完成[/green]")
             
@@ -535,15 +557,76 @@ def run_workflow(
                 console.print(f"    [red]✗ 工作流执行失败: {e}[/red]")
                 continue
     
-    # 生成 Daily Brief
+    # ── 生成 Daily Brief（本地） ──
     if all_writeups:
         console.print(f"\n[bold cyan]📝 生成 Daily Brief[/bold cyan]")
-        today = date.today().isoformat()
         daily_md = render_daily_brief_md(today, all_writeups)
         daily_brief_path = paths.daily_brief_dir / f"{today}.md"
         daily_brief_path.parent.mkdir(parents=True, exist_ok=True)
         daily_brief_path.write_text(daily_md, encoding="utf-8")
         console.print(f"  [green]✓ 本地 Markdown[/green] {daily_brief_path}")
+    
+    # ── 飞书发布 ──
+    if publish_feishu and feishu_client and feishu_config and all_writeups:
+        console.print(f"\n[bold cyan]📊 发布到飞书[/bold cyan]")
+        try:
+            records_created, tag_list, skipped = publish_to_feishu_bitable(
+                feishu_client, feishu_config, all_writeups
+            )
+            feishu_publish_result["success"] = True
+            feishu_publish_result["new_records"] = len(records_created)
+            feishu_publish_result["skipped_records"] = skipped
+            feishu_publish_result["all_tags"] = tag_list
+            console.print(f"  [green]✓ 多维表格[/green] 新增 {len(records_created)} 条，跳过 {skipped} 条")
+            
+            # 新增标签提醒
+            if tag_list:
+                console.print(f"  [cyan]📌 本次标签[/cyan]：{', '.join(tag_list)}")
+        except Exception as e:
+            console.print(f"  [red]✗ 飞书多维表格发布失败: {e}[/red]")
+        
+        # 飞书文档
+        if feishu_docx:
+            try:
+                console.print(f"\n[bold cyan]📄 创建飞书文档[/bold cyan]")
+                docx_result = publish_daily_brief_to_feishu_docx(
+                    feishu_client, all_writeups, today
+                )
+                console.print(f"  [green]✓ 文档创建成功[/green] Daily Brief — {today}")
+                console.print(f"  文档 ID: {docx_result['document_id']}")
+                
+                if feishu_config.domain:
+                    doc_url = f"https://{feishu_config.domain}.feishu.cn/docx/{docx_result['document_id']}"
+                    console.print(f"  [link={doc_url}]📄 点击打开文档[/link]")
+                    console.print(f"  链接: {doc_url}")
+                    feishu_publish_result["doc_url"] = doc_url
+            except Exception as e:
+                console.print(f"  [red]✗ 飞书文档创建失败: {e}[/red]")
+    
+    # ── 飞书 Webhook 通知 ──
+    webhook_url = os.getenv("FEISHU_WEBHOOK_URL")
+    if webhook_url and (feishu_publish_result["success"] or all_writeups):
+        console.print(f"\n[bold cyan]🔔 发送飞书通知[/bold cyan]")
+        try:
+            content_lines = []
+            if all_writeups:
+                content_lines.append(f"📊 今日处理 **{len(all_writeups)}** 集播客")
+                for w in all_writeups:
+                    content_lines.append(f"  • {w.feed_title} — {w.title}")
+            if feishu_publish_result["new_records"] > 0:
+                content_lines.append(f"\n✅ 新增 **{feishu_publish_result['new_records']}** 条记录到多维表格")
+            if feishu_publish_result["skipped_records"] > 0:
+                content_lines.append(f"⏩ 跳过 **{feishu_publish_result['skipped_records']}** 条重复记录")
+            
+            send_feishu_webhook_message(
+                webhook_url=webhook_url,
+                title=f"🎙️ 播客更新通知 — {today}",
+                content_lines=content_lines,
+                doc_url=feishu_publish_result.get("doc_url"),
+            )
+            console.print(f"  [green]✓ 通知已发送[/green]")
+        except Exception as e:
+            console.print(f"  [red]✗ 通知发送失败: {e}[/red]")
     
     console.print("\n[bold green]🎉 所有任务完成！[/bold green]\n")
 
