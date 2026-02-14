@@ -93,11 +93,27 @@ cp .env.example .env
 ### 3）运行
 
 ```bash
-# 推荐：LangGraph 工作流版本
+# 推荐：LangGraph 工作流版本（自动清理中间文件）
 python -m podcast_brief run-workflow --max-episodes-per-feed 1
+
+# 如果想保留音频/转写文件用于调试
+python -m podcast_brief run-workflow --no-cleanup
 ```
 
-**就这么简单！** 一行命令完成全部流程，结果自动发布到飞书并推送通知。
+**就这么简单！** 一行命令完成全部流程：
+- ✅ 自动下载音频 → 转写 → 翻译 → 总结
+- ✅ 自动发布到飞书（多维表格 + Daily Brief 文档）
+- ✅ 自动发送群通知
+- ✅ **自动清理中间文件**，节省磁盘空间
+
+#### 常用参数
+
+```bash
+--max-episodes-per-feed 1     # 每个播客处理最新 N 集（默认 1）
+--no-cleanup                  # 保留所有中间文件（用于调试）
+--keep-audio                  # 仅保留音频文件
+--keep-transcripts            # 仅保留转写文件
+```
 
 ---
 
@@ -142,7 +158,6 @@ Tech-Podcast-Brief/
 │   ├── operation_guide.md     # 操作指南（启动流程、工具说明）
 │   ├── feishu_setup.md        # 飞书配置教程
 │   └── feishu_tags.md         # 标签管理说明
-├── scripts/                   # 脚本
 ├── data/                      # 运行时数据（git 忽略）
 ├── requirements.txt           # Python 依赖
 ├── .env.example               # 环境变量模板

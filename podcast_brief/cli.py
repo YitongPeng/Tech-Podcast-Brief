@@ -430,6 +430,9 @@ def run_workflow(
     max_episodes_per_feed: int = typer.Option(1, help="每个 feed 处理最新几集"),
     publish_feishu: bool = typer.Option(True, help="发布到飞书多维表格"),
     feishu_docx: bool = typer.Option(True, help="创建飞书 Daily Brief 文档"),
+    cleanup: bool = typer.Option(True, help="处理完自动清理音频和转写文件（节省空间）"),
+    keep_audio: bool = typer.Option(False, help="与 cleanup 配合：保留音频文件"),
+    keep_transcripts: bool = typer.Option(False, help="与 cleanup 配合：保留转写文件"),
 ) -> None:
     """
     🚀 使用 LangGraph 工作流处理播客
@@ -627,6 +630,48 @@ def run_workflow(
             console.print(f"  [green]✓ 通知已发送[/green]")
         except Exception as e:
             console.print(f"  [red]✗ 通知发送失败: {e}[/red]")
+    
+    # ── 清理中间文件 ──
+    if cleanup and all_writeups:
+        console.print("\n[bold cyan]🧹 清理中间文件[/bold cyan]")
+        cleaned_audio_size = 0
+        cleaned_transcript_size = 0
+        
+        for w in all_writeups:
+            rec = db.get_episode(w.episode_id)
+            if not rec:
+                continue
+            
+            # 清理音频
+            if not keep_audio:
+                audio_path = build_audio_path(
+                    paths.audio_dir,
+                    feed_slug=rec.feed_slug,
+                    episode_id=rec.episode_id,
+                    audio_type=rec.audio_type,
+                )
+                if audio_path.exists():
+                    cleaned_audio_size += audio_path.stat().st_size
+                    audio_path.unlink()
+            
+            # 清理转写文件
+            if not keep_transcripts:
+                transcript_json = paths.transcripts_dir / rec.feed_slug / f"{rec.episode_id}.json"
+                transcript_txt = paths.transcripts_dir / rec.feed_slug / f"{rec.episode_id}.txt"
+                transcript_cn_txt = paths.transcripts_dir / rec.feed_slug / f"{rec.episode_id}_cn.txt"
+                
+                for f in [transcript_json, transcript_txt, transcript_cn_txt]:
+                    if f.exists():
+                        cleaned_transcript_size += f.stat().st_size
+                        f.unlink()
+        
+        # 显示清理结果
+        total_cleaned_mb = (cleaned_audio_size + cleaned_transcript_size) / (1024 * 1024)
+        console.print(f"  [green]✓ 清理完成[/green] 释放空间: {total_cleaned_mb:.1f} MB")
+        if not keep_audio and cleaned_audio_size > 0:
+            console.print(f"    - 音频: {cleaned_audio_size / (1024 * 1024):.1f} MB")
+        if not keep_transcripts and cleaned_transcript_size > 0:
+            console.print(f"    - 转写: {cleaned_transcript_size / (1024 * 1024):.2f} MB")
     
     console.print("\n[bold green]🎉 所有任务完成！[/bold green]\n")
 
