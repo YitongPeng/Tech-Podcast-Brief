@@ -93,21 +93,27 @@ cp .env.example .env
 ### 3）运行
 
 ```bash
-# LangGraph 工作流版本（推荐）
+# 推荐：LangGraph 工作流版本
 python -m podcast_brief run-workflow --max-episodes-per-feed 1
-
-# 原版命令（功能等价）
-python -m podcast_brief run --max-episodes-per-feed 1 --publish-feishu --feishu-docx
 ```
 
-### 4）自动化（n8n）
+**就这么简单！** 一行命令完成全部流程，结果自动发布到飞书并推送通知。
+
+---
+
+## 定时运行（可选）
+
+如果需要每天自动运行，推荐使用 **macOS cron**（比 n8n 更简单）：
 
 ```bash
-# 安装并启动 n8n
-npm install -g n8n
-n8n start
-# 打开 http://localhost:5678 配置工作流
+# 编辑定时任务
+crontab -e
+
+# 添加：每天早上 8 点自动运行
+0 8 * * * cd /path/to/Tech-Podcast-Brief && source .venv/bin/activate && python -m podcast_brief run-workflow >> ~/podcast.log 2>&1
 ```
+
+> **关于 n8n**：本项目也支持 n8n 可视化调度，但对于单命令任务来说，直接终端运行或 cron 定时更简单高效。n8n 更适合需要连接多个外部服务的复杂工作流场景。
 
 详细操作指南请见 **[`docs/operation_guide.md`](docs/operation_guide.md)**
 

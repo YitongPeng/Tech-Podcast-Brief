@@ -70,9 +70,9 @@ FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/your_hook_id
 
 ---
 
-## 二、运行方式
+## 二、运行方式（推荐）
 
-### 2.1 方式一：终端直接运行
+### 2.1 方式一：终端直接运行 ⭐ 最简单
 
 ```bash
 # 激活虚拟环境
@@ -81,16 +81,38 @@ source .venv/bin/activate
 # LangGraph 工作流版本（推荐）
 python -m podcast_brief run-workflow --max-episodes-per-feed 1
 
-# 原版命令
+# 原版命令（功能等价）
 python -m podcast_brief run --max-episodes-per-feed 1 --publish-feishu --feishu-docx
 ```
 
-### 2.2 方式二：n8n 可视化触发（推荐）
+**推荐理由：**
+- ✅ 一行命令搞定
+- ✅ 无需额外服务
+- ✅ 输出日志清晰
+- ✅ 执行速度快
+
+### 2.2 方式二：定时自动运行（cron）
+
+**适合场景：** 每天固定时间自动执行
+
+```bash
+# 编辑定时任务
+crontab -e
+
+# 添加：每天早上 8 点自动运行
+0 8 * * * cd /Users/pengyitong/Documents/Project/Multi_agent && source .venv/bin/activate && python -m podcast_brief run-workflow >> ~/podcast.log 2>&1
+```
+
+### 2.3 方式三：n8n 可视化（可选）
+
+> **注意：** 对于本项目这种"单一命令执行"的场景，n8n 显得有些复杂。n8n 更适合需要集成多个外部服务、有复杂条件分支或需要可视化监控的工作流。如果只是简单的定时执行，推荐使用 **cron**（方式二）。
+
+如果你仍想使用 n8n：
 
 #### 步骤 1：启动 n8n
 
 ```bash
-# 打开一个终端窗口
+# 打开一个终端窗口（保持运行）
 n8n start
 # n8n 会在 http://localhost:5678 启动
 ```
@@ -98,9 +120,9 @@ n8n start
 #### 步骤 2：配置工作流
 
 1. 打开浏览器访问 `http://localhost:5678`
-2. 创建新工作流（或编辑已有工作流）
+2. 创建新工作流
 3. 添加节点：
-   - **Manual Trigger**（手动触发器）
+   - **Manual Trigger** 或 **Schedule Trigger**（定时触发）
    - **Execute Command**（执行命令）
 4. Execute Command 节点配置：
 
@@ -112,9 +134,49 @@ bash -c "cd /path/to/Tech-Podcast-Brief && source .venv/bin/activate && python -
 
 #### 步骤 3：运行
 
-- 点击 n8n 界面上的 **"Execute Workflow"** 按钮
-- 等待执行完成（约 15-30 分钟）
-- 执行结果会显示在 n8n 界面中
+- 手动触发：点击 **"Execute Workflow"** 按钮
+- 定时触发：配置 Schedule Trigger，设置运行时间
+
+---
+
+## 三、执行过程可视化
+
+### 终端日志输出
+
+执行命令后，终端会显示实时进度：
+
+```
+🎙️ 播客自动处理（LangGraph 版本）
+
+Feed Latent Space — https://feeds.flightcast.com/...
+  ⏩ 跳过已处理 Owning the AI Pareto Frontier
+
+Feed The a16z Show — https://feeds.soundcloud.com/...
+  ▶ 处理 New Episode Title
+    发布日期: 2026-02-13
+    ✓ 下载音频
+    ✓ ASR 转写
+    ✓ 翻译中文
+    ✓ 生成总结
+    ✓ 发布飞书
+    ✓ 处理完成
+
+📊 发布到飞书
+  ✓ 多维表格 新增 1 条
+  📌 本次标签：Agent、产品增长、RAG
+
+📄 创建飞书文档
+  ✓ 文档创建成功 Daily Brief — 2026-02-13
+  📄 点击打开文档
+  链接: https://your-domain.feishu.cn/docx/xxxxx
+
+🔔 发送飞书通知
+  ✓ 通知已发送
+
+🎉 所有任务完成！
+```
+
+**每一步的状态都清晰可见！** 这就是 LangGraph 的"可视化"！
 
 ---
 
