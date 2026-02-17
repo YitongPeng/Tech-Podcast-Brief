@@ -37,7 +37,7 @@ RSS 订阅 → 音频下载 → 本地 ASR 转写 → 英译中翻译 → 智能
 | **采集 Agent** | feedparser + httpx | 9 个英文科技播客 RSS 源，增量去重 |
 | **多模态 Agent** | faster-whisper (OpenAI Whisper) | 本地音频→文本转写，零 API 成本 |
 | **翻译 Agent** | DeepSeek API + 术语表 | 英→中翻译，AI/科技领域专业术语对齐 |
-| **总结 Agent** | DeepSeek API + 结构化提示词 | 智能过滤广告/寒暄，提取核心要点与标签 |
+| **总结 Agent** | DeepSeek API + 结构化提示词 | 提取核心要点与标签，system prompt |
 | **发布 Agent** | 飞书 Open API | 多维表格 + Daily Brief 文档 + Webhook 群通知 |
 
 ---
@@ -63,9 +63,8 @@ RSS 订阅 → 音频下载 → 本地 ASR 转写 → 英译中翻译 → 智能
 | **大语言模型（LLM）** | DeepSeek API (OpenAI SDK 兼容) | 翻译 + 总结 |
 | **数据存储** | SQLite + 本地文件系统 | 去重、状态管理、中间产物存储 |
 | **内容发布** | 飞书 Open API | Bitable 多维表格 + Docx 文档 + Webhook |
-| **任务调度** | n8n | 手动/定时触发，可视化工作流 |
-| **CLI 框架** | Typer + Rich | 命令行界面，彩色状态输出 |
-| **网络请求** | httpx | RSS 拉取、音频下载、API 调用 |
+| **CLI 框架**          | Typer + Rich                    | 命令行界面，彩色状态输出                    |
+| **网络请求**          | httpx                           | RSS 拉取、音频下载、API 调用                |
 
 ---
 
@@ -173,7 +172,6 @@ Tech-Podcast-Brief/
 | **ASR（本地 Whisper）** | 免费 | faster-whisper 本地运行 |
 | **翻译 + 总结（DeepSeek）** | ~¥0.15-0.30/集 | 约 ¥13-27/月（每天 3 集） |
 | **飞书** | 免费 | 开放平台免费额度 |
-| **n8n** | 免费 | 本地运行 |
 
 ---
 

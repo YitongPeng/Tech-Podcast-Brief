@@ -15,6 +15,7 @@ class FeishuConfig:
     bitable_app_token: Optional[str] = None  # 多维表格的 app_token
     bitable_table_id: Optional[str] = None   # 表格的 table_id
     domain: Optional[str] = None             # 飞书域名（例如：rcns5ppx1h0z）
+    folder_token: Optional[str] = None       # Daily Brief 文档保存的文件夹 token
 
 
 def get_feishu_config() -> Optional[FeishuConfig]:
@@ -34,6 +35,7 @@ def get_feishu_config() -> Optional[FeishuConfig]:
         bitable_app_token=os.getenv("FEISHU_BITABLE_APP_TOKEN"),
         bitable_table_id=os.getenv("FEISHU_BITABLE_TABLE_ID"),
         domain=os.getenv("FEISHU_DOMAIN"),  # 可选：用于生成文档链接
+        folder_token=os.getenv("FEISHU_FOLDER_TOKEN"),  # 可选：Daily Brief 保存文件夹
     )
 
 

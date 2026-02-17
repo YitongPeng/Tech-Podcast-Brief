@@ -275,7 +275,7 @@ def run(
                         feishu_client,
                         new_writeups,
                         today,
-                        folder_token=None,  # 可以后续支持指定文件夹
+                        folder_token=feishu_config.folder_token,  # 使用配置的文件夹
                     )
                     console.print(f"[green]  ✓ 文档创建成功[/green] {docx_result['title']}")
                     console.print(f"  文档 ID: {docx_result['document_id']}")
@@ -593,7 +593,7 @@ def run_workflow(
             try:
                 console.print(f"\n[bold cyan]📄 创建飞书文档[/bold cyan]")
                 docx_result = publish_daily_brief_to_feishu_docx(
-                    feishu_client, all_writeups, today
+                    feishu_client, all_writeups, today, folder_token=feishu_config.folder_token
                 )
                 console.print(f"  [green]✓ 文档创建成功[/green] Daily Brief — {today}")
                 console.print(f"  文档 ID: {docx_result['document_id']}")
